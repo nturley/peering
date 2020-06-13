@@ -1,6 +1,6 @@
 <input type=text id=peerId />
 <input type="button" value="Connect" id=connectBtn />
-
+with error handling.
 <script src="https://unpkg.com/peerjs@1.2.0/dist/peerjs.min.js"></script>
 <script>
 
@@ -12,6 +12,9 @@ peer.on('open', id => {
 });
 peer.on('connect', conn => {
   console.log('peer connect');
+});
+peer.on('error', err => {
+  console.error(err);
 });
 document.querySelector('#connectBtn').onclick = () => {
   let peerInput = document.querySelector('#peerId')
