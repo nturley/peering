@@ -1,27 +1,99 @@
-<input type=text id=peerId />
-<input type="button" value="Connect" id=connectBtn />
-with error handling.
-<script src="https://unpkg.com/peerjs@1.2.0/dist/peerjs.min.js"></script>
-<script>
+<h2>My Peer ID: <span id="myPeerId"></span></h2>
 
+<label>Publish Data</label>
+<input type=text id=dataInput />
+<input type="button" value="Publish" id=publishBtn />
+
+<div id=connList >
+
+</div>
+
+<div id=received >
+
+</div>
+<script src="https://unpkg.com/peerjs@1.2.0/dist/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/7.15.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/7.15.0/firebase-firestore.js"></script>
+
+<script>
+let firebaseConfig = {
+  apiKey: "AIzaSyDIBHbAX1SRlxc2QP5Lh0rtt-wSZms8kNs",
+  authDomain: "peer-discovery.firebaseapp.com",
+  databaseURL: "https://peer-discovery.firebaseio.com",
+  projectId: "peer-discovery",
+  storageBucket: "peer-discovery.appspot.com",
+  messagingSenderId: "571637949460",
+  appId: "1:571637949460:web:69264ab70460b4f1167301"
+};
+firebase.initializeApp(firebaseConfig);
+let db = firebase.firestore();
+
+function dataReceived(d, conn) {
+  msgs.push({d,conn});
+  let r = document.querySelector('#received');
+  r.innerHTML = `<h2>Received Messages</h2><ul>${msgs.map(m => `<li>${m.conn.peer}: ${m.d}</li>`).join('')}</ul>`;
+}
+
+function closed(c) {
+  conns.delete(c);
+  db.collection("peers").doc(c.peerId).delete();
+}
+
+function updateConnList() {
+  let d = document.querySelector('#connList');
+  d.innerHTML = `<h2>Peers</h2><ul>${
+    [...conns]
+      .map(c => `<li>${c.peer}</li>`)
+      .join('')
+  }</ul>`
+}
+
+function newConnection(conn) {
+  conn.on('open', () => {
+    console.log('connection open');
+    conns.add(conn);
+    conn.on('data', d => dataReceived(d, conn));
+    conn.on('close', () => closed(conn));
+    conn.on('error', e => console.log(e));
+    updateConnList()
+  });
+}
 
 const peer = new Peer();
+let conns = new Set();
+let msgs = [];
 peer.on('open', id => {
-  console.log('peer open');
-  console.log('My peer ID is: ' + id);
+  document.querySelector('#myPeerId').innerHTML = id;
+  db.collection("peers").doc(id).set({
+    peerId: id
+  });
 });
-peer.on('connect', conn => {
-  console.log('peer connect');
+let firstSnap = true;
+db.collection("peers").onSnapshot(snapshot => {
+  // ignore first snapshot, they will connect to us
+  if (!firstSnap) {
+    snapshot.docChanges().forEach(change => {
+      if (change.type === "added") {
+        let newFriend = change.doc.data()
+        if (newFriend.peerId === peer.id) return;
+        let conn = peer.connect(newFriend.peerId);
+        newConnection(conn);
+      }
+    });
+  } else {
+    firstSnap = false;
+  }
 });
+
+peer.on('connection', newConnection);
 peer.on('error', err => {
-  console.error(err);
+  console.log(err);
 });
-document.querySelector('#connectBtn').onclick = () => {
-  let peerInput = document.querySelector('#peerId')
-  console.log('go!');
-  console.log(peerInput.value);
-  peer.connect(peerInput.value);
-  
+document.querySelector('#publishBtn').onclick = () => {
+  let dataInput = document.querySelector('#dataInput');
+  conns.forEach(c => {
+    c.send(dataInput.value);
+  })
 }
 
 </script>
