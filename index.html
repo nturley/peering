@@ -36,7 +36,7 @@ function dataReceived(d, conn) {
 
 function closed(c) {
   conns.delete(c);
-  db.collection("peers").doc(c.peerId).delete();
+  db.collection("peers").doc(c.peer).delete();
 }
 
 function updateConnList() {
@@ -54,7 +54,7 @@ function newConnection(conn) {
     conns.add(conn);
     conn.on('data', d => dataReceived(d, conn));
     conn.on('close', () => closed(conn));
-    conn.on('error', e => console.log(e));
+    conn.on('error', e => closed(conn));
     updateConnList()
   });
 }
@@ -66,6 +66,8 @@ peer.on('open', id => {
   document.querySelector('#myPeerId').innerHTML = id;
   db.collection("peers").doc(id).set({
     peerId: id
+  }).then(() => {
+    db.collection("peers").doc(id).delete();
   });
 });
 let firstSnap = true;
