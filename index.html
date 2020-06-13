@@ -1,3 +1,4 @@
+
 <h2>My Peer ID: <span id="myPeerId"></span></h2>
 
 <label>Publish Data</label>
@@ -7,7 +8,7 @@
 <div id=connList ></div>
 
 <div id=received ></div>
-
+<video id="vid1"></video>
 
 <script src="https://unpkg.com/peerjs@1.2.0/dist/peerjs.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/7.15.1/firebase-app.js"></script>
@@ -100,5 +101,9 @@ document.querySelector('#publishBtn').onclick = () => {
     c.send(dataInput.value);
   })
 }
+
+navigator.mediaDevices.getUserMedia({ video: true }).then( stream => {
+  document.querySelector('#vid1').srcObject = stream;
+})
 
 </script>
