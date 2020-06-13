@@ -4,17 +4,15 @@
 <input type=text id=dataInput />
 <input type="button" value="Publish" id=publishBtn />
 
-<div id=connList >
+<div id=connList ></div>
 
-</div>
+<div id=received ></div>
 
-<div id=received >
 
-</div>
 <script src="https://unpkg.com/peerjs@1.2.0/dist/peerjs.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/7.15.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/7.15.0/firebase-firestore.js"></script>
-
+<script src="https://cdn.jsdelivr.net/gh/poush/random-animal/dist/random-animal.min.js"></script>
 <script>
 let firebaseConfig = {
   apiKey: "AIzaSyDIBHbAX1SRlxc2QP5Lh0rtt-wSZms8kNs",
@@ -29,9 +27,13 @@ firebase.initializeApp(firebaseConfig);
 let db = firebase.firestore();
 
 function dataReceived(d, conn) {
-  msgs.push({d,conn});
+  msgs.push({d, conn});
   let r = document.querySelector('#received');
-  r.innerHTML = `<h2>Received Messages</h2><ul>${msgs.map(m => `<li>${m.conn.peer}: ${m.d}</li>`).join('')}</ul>`;
+  r.innerHTML = `
+  <h2>Received Messages</h2>
+  <ul>
+    ${msgs.map(m => `<li>${m.conn.name}: ${m.d}</li>`).join('')}
+  </ul>`;
 }
 
 function closed(c) {
@@ -41,16 +43,16 @@ function closed(c) {
 
 function updateConnList() {
   let d = document.querySelector('#connList');
-  d.innerHTML = `<h2>Peers</h2><ul>${
-    [...conns]
-      .map(c => `<li>${c.peer}</li>`)
-      .join('')
-  }</ul>`
+  d.innerHTML = `
+  <h2>Peers</h2>
+  <ul>
+    ${[...conns].map(c => `<li>${c.name}</li>`).join('')}
+  </ul>`
 }
 
-function newConnection(conn) {
+function newConnection(conn, handle) {
+  conn.name = handle || conn.metadata;
   conn.on('open', () => {
-    console.log('connection open');
     conns.add(conn);
     conn.on('data', d => dataReceived(d, conn));
     conn.on('close', () => closed(conn));
@@ -61,25 +63,28 @@ function newConnection(conn) {
 
 const peer = new Peer();
 let conns = new Set();
+const myHandle = randomAnimal();
 let msgs = [];
 peer.on('open', id => {
-  document.querySelector('#myPeerId').innerHTML = id;
+  document.querySelector('#myPeerId').innerHTML = myHandle;
   db.collection("peers").doc(id).set({
-    peerId: id
+    peerId: id,
+    handle: myHandle
   }).then(() => {
     db.collection("peers").doc(id).delete();
   });
 });
 let firstSnap = true;
 db.collection("peers").onSnapshot(snapshot => {
-  // ignore first snapshot, they will connect to us
+  // ignore first snapshot, peers already present will initiate
   if (!firstSnap) {
     snapshot.docChanges().forEach(change => {
       if (change.type === "added") {
         let newFriend = change.doc.data()
         if (newFriend.peerId === peer.id) return;
-        let conn = peer.connect(newFriend.peerId);
-        newConnection(conn);
+        let conn = peer.connect(newFriend.peerId, {metadata: myHandle});
+        console.log(`${myHandle} is trying to connect to ${newFriend.handle}`)
+        newConnection(conn, newFriend.handle);
       }
     });
   } else {
@@ -88,9 +93,7 @@ db.collection("peers").onSnapshot(snapshot => {
 });
 
 peer.on('connection', newConnection);
-peer.on('error', err => {
-  console.log(err);
-});
+peer.on('error', err => console.log(err));
 document.querySelector('#publishBtn').onclick = () => {
   let dataInput = document.querySelector('#dataInput');
   conns.forEach(c => {
