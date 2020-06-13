@@ -1,8 +1,11 @@
+<input type=text id=peerId />
+<input type="button" value="Connect" id=connectBtn />
+
 <script src="https://unpkg.com/peerjs@1.2.0/dist/peerjs.min.js"></script>
 <script>
 
 
-var peer = new Peer();
+const peer = new Peer();
 peer.on('open', id => {
   console.log('peer open');
   console.log('My peer ID is: ' + id);
@@ -10,5 +13,12 @@ peer.on('open', id => {
 peer.on('connect', conn => {
   console.log('peer connect');
 });
+document.querySelector('#connectBtn').onclick = () => {
+  let peerInput = document.querySelector('#peerId')
+  console.log('go!');
+  console.log(peerInput.value);
+  peer.connect(peerInput.value);
+  
+}
 
 </script>
