@@ -1,0 +1,14 @@
+<script src="https://unpkg.com/peerjs@1.2.0/dist/peerjs.min.js"></script>
+<script>
+
+
+var peer = new Peer();
+peer.on('open', id => {
+  console.log('peer open');
+  console.log('My peer ID is: ' + id);
+});
+peer.on('connect', conn => {
+  console.log('peer connect');
+});
+
+</script>
