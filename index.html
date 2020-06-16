@@ -10,13 +10,19 @@
 		we don't need that stored.
 -->
 
-<h2 id=myName >ID: </h2>
+<h2 id=myName>ID: </h2>
 
 <h2>Peers</h2>
 <div id=peerList></div>
 
 <h2>Messages</h2>
 <div id=messages></div>
+
+<h2>Me</h2>
+<video id=me></video>
+
+<h3>Everyone</h3>
+<div id=vids></div>
 
 <input type=text id=messageInput />
 <input type=button id=sendMessageBtn value=Send />
@@ -29,40 +35,46 @@
 
 <script>
 
-const myHandle = randomAnimal();
-const myId = uuidv4();
-const peerLookup = {};
-const messages = [];
-let mystream = null;
+  const myHandle = randomAnimal();
+  const myId = uuidv4();
+  const peerLookup = {};
+  const messages = [];
+  let myStream = null;
 
-document.querySelector('#myName').innerHTML = `ID: ${myHandle}`;
+  document.querySelector('#myName').innerHTML = `ID: ${myHandle}`;
 
-function updatePeerList() {
-	document.querySelector('#peerList').innerHTML = `
-  <ul>
-	  ${Object.values(peerLookup).map(p => `<li>${p.handle} ${p.connected?'':'(connecting)'}</li>`).join('')}
-	</ul>
+  navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+    myStream = stream;
+    document.querySelector('#me').srcObject = stream;
+    document.querySelector('#me').play();
+  });
+
+  function updatePeerList() {
+    document.querySelector('#peerList').innerHTML = `
+  	<ul>
+	  	${Object.values(peerLookup).map(p => `<li>${p.handle} ${p.connected ? '' : '(connecting)'}</li>`).join('')}
+	  </ul>
 	`
-}
+  }
 
-function updateMessages() {
-	document.querySelector('#messages').innerHTML = `
-	<ul>
-	  ${messages.map(m => `<li>${m.sender}: ${m.message}</li>`).join('')}
-	</ul>
+  function updateMessages() {
+    document.querySelector('#messages').innerHTML = `
+		<ul>
+	    ${messages.map(m => `<li>${m.sender}: ${m.message}</li>`).join('')}
+	  </ul>
 	`
-}
+  }
 
-document.querySelector('#sendMessageBtn').onclick = () => {
-	let message = document.querySelector('#messageInput').value
-	messages.push({sender:'me', message});
-	updateMessages();
-	Object.values(peerLookup).forEach(p => {
-		if (p.connected) p.peer.send(message);
-	});
-};
+  document.querySelector('#sendMessageBtn').onclick = () => {
+    let message = document.querySelector('#messageInput').value
+    messages.push({ sender: 'me', message });
+    updateMessages();
+    Object.values(peerLookup).forEach(p => {
+      if (p.connected) p.peer.send(message);
+    });
+  };
 
-const firebaseConfig = {
+  const firebaseConfig = {
     apiKey: "AIzaSyDIBHbAX1SRlxc2QP5Lh0rtt-wSZms8kNs",
     authDomain: "peer-discovery.firebaseapp.com",
     databaseURL: "https://peer-discovery.firebaseio.com",
@@ -70,138 +82,154 @@ const firebaseConfig = {
     storageBucket: "peer-discovery.appspot.com",
     messagingSenderId: "571637949460",
     appId: "1:571637949460:web:69264ab70460b4f1167301"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
 
-// someone new has entered the room
-db.collection("peers").onSnapshot(snapshot => {
-  snapshot.docChanges().forEach(change => {
-    if (change.type !== "added") return;
-		let newFriend = change.doc.data();
-		if (newFriend.peerId == myId) return;
-		db.collection("otherPeers").doc(myId).set({
-			peerId: myId,
-			handle: myHandle
-		}).then(() => {
-			db.collection("otherPeers").doc(myId).delete();
-		});
-		const p = new SimplePeer({
-			initiator: true,
-			trickle: false
-		});
-		peerLookup[newFriend.peerId] = {
-			peer: p,
-			handle: newFriend.handle,
-			connected: false
-		};
-		updatePeerList();
-		p.on('connect', () => {
-			peerLookup[newFriend.peerId].connected = true;
-			updatePeerList()
-		});
-		p.on('data', data => {
-			messages.push({
-				sender: newFriend.handle,
-				message: data
-			});
-			updateMessages();
-		})
-		p.on('error', err => console.log('error', err));
-		p.on('close', () => {
-			delete peerLookup[newFriend.peerId];
-			updatePeerList();
-		});
-		p.on('signal', data => {
-			// send our signaling data to our new friend
-			db.collection('initiate').add({
-				data,
-				from: myId,
-				fromHandle: myHandle,
-				to: newFriend.peerId
-			}).then( ref => {
-				db.collection('initiate').doc(ref.id).delete();
-			})
-		});
-	});
-});
 
-db.collection("otherPeers").onSnapshot(snapshot => {
-  snapshot.docChanges().forEach(change => {
-    if (change.type !== "added") return;
-		let newFriend = change.doc.data();
-		if (newFriend.peerId == myId) return;
-		if (newFriend.peerId in peerLookup) return;
-		peerLookup[newFriend.peerId] = {
-			peer: null,
-			handle: newFriend.handle,
-			connected: false
-		};
-		updatePeerList();
-	})
-})
 
-// receive signaling information from everyone already in the room
-db.collection('initiate').onSnapshot(snapshot => {
-  snapshot.docChanges().forEach(change => {
-		if (change.type !== "added") return;
-		let initiateRequest = change.doc.data();
-		if (initiateRequest.to !== myId) return;
-		const p = new SimplePeer({
-			initiator: false,
-			trickle: false
-		});
-		p.signal(initiateRequest.data);
-		peerLookup[initiateRequest.from] = {
-			peer: p,
-			handle: initiateRequest.fromHandle,
-			connected: false
-		};
-		updatePeerList();
-		p.on('connect', () => {
-			peerLookup[initiateRequest.from].connected = true;
-			updatePeerList();
-		});
-		p.on('data', data => {
-			messages.push({
-				sender: initiateRequest.fromHandle,
-				message: data
-			});
-			updateMessages();
-		})
-		p.on('error', err => console.log('error', err));
-		p.on('close', () => {
-			delete peerLookup[initiateRequest.from];
-			updatePeerList();
-		});
-		p.on('signal', data => {
-			db.collection("respond").add({
-  			to: initiateRequest.from,
-				from: myId,
-  			data
-			}).then(ref => {
-  			db.collection("respond").doc(ref.id).delete();
-			});
-		});
-	})
-})
+  // someone new has entered the room
+  db.collection("peers").onSnapshot(snapshot => {
+    snapshot.docChanges().forEach(change => {
+      if (change.type !== "added") return;
+      let newFriend = change.doc.data();
+      if (newFriend.peerId == myId) return;
+      db.collection("otherPeers").doc(myId).set({
+        peerId: myId,
+        handle: myHandle
+      }).then(() => {
+        db.collection("otherPeers").doc(myId).delete();
+      });
+      const p = new SimplePeer({
+        initiator: true,
+        trickle: false,
+        stream: myStream
+      });
+      peerLookup[newFriend.peerId] = {
+        peer: p,
+        handle: newFriend.handle,
+        connected: false
+      };
+      updatePeerList();
+      p.on('connect', () => {
+        peerLookup[newFriend.peerId].connected = true;
+        updatePeerList()
+      });
+      p.on('data', data => {
+        messages.push({
+          sender: newFriend.handle,
+          message: data
+        });
+        updateMessages();
+      })
+      p.on('error', err => console.log('error', err));
+      p.on('close', () => {
+        delete peerLookup[newFriend.peerId];
+        updatePeerList();
+      });
+      p.on('signal', data => {
+        // send our signaling data to our new friend
+        db.collection('initiate').add({
+          data,
+          from: myId,
+          fromHandle: myHandle,
+          to: newFriend.peerId
+        }).then(ref => {
+          db.collection('initiate').doc(ref.id).delete();
+        })
+      });
+      p.on('stream', stream => {
+        let v = document.createElement('video');
+        v.srcObject = stream;
+        document.querySelector('#vids').appendChild(v);
+        v.play();
+      });
+    });
+  });
 
-// get the signaling data from the newcomer and store it
-db.collection('respond').onSnapshot(snapshot => {
-  snapshot.docChanges().forEach(change => {
-		if (change.type !== "added") return;
-		let response = change.doc.data();
-		if (response.to !== myId) return;
-		peerLookup[response.from].peer.signal(response.data);
-	})
-})
+  db.collection("otherPeers").onSnapshot(snapshot => {
+    snapshot.docChanges().forEach(change => {
+      if (change.type !== "added") return;
+      let newFriend = change.doc.data();
+      if (newFriend.peerId == myId) return;
+      if (newFriend.peerId in peerLookup) return;
+      peerLookup[newFriend.peerId] = {
+        peer: null,
+        handle: newFriend.handle,
+        connected: false
+      };
+      updatePeerList();
+    })
+  })
 
-// publish my existence to the world!
-db.collection("peers").doc(myId).set({
-  peerId: myId,
-  handle: myHandle
-}).then(() => {
-  db.collection("peers").doc(myId).delete();
-});
+  // receive signaling information from everyone already in the room
+  db.collection('initiate').onSnapshot(snapshot => {
+    snapshot.docChanges().forEach(change => {
+      if (change.type !== "added") return;
+      let initiateRequest = change.doc.data();
+      if (initiateRequest.to !== myId) return;
+      const p = new SimplePeer({
+        initiator: false,
+        trickle: false,
+        stream: myStream
+      });
+      p.signal(initiateRequest.data);
+      peerLookup[initiateRequest.from] = {
+        peer: p,
+        handle: initiateRequest.fromHandle,
+        connected: false
+      };
+      updatePeerList();
+      p.on('connect', () => {
+        peerLookup[initiateRequest.from].connected = true;
+        updatePeerList();
+      });
+      p.on('data', data => {
+        messages.push({
+          sender: initiateRequest.fromHandle,
+          message: data
+        });
+        updateMessages();
+      })
+      p.on('error', err => console.log('error', err));
+      p.on('close', () => {
+        delete peerLookup[initiateRequest.from];
+        updatePeerList();
+      });
+      p.on('signal', data => {
+        db.collection("respond").add({
+          to: initiateRequest.from,
+          from: myId,
+          data
+        }).then(ref => {
+          db.collection("respond").doc(ref.id).delete();
+        });
+      });
+      p.on('stream', stream => {
+        let v = document.createElement('video');
+        v.srcObject = stream;
+        document.querySelector('#vids').appendChild(v);
+        v.play();
+      });
+    });
+  })
+
+  // get the signaling data from the newcomer and store it
+  db.collection('respond').onSnapshot(snapshot => {
+    snapshot.docChanges().forEach(change => {
+      if (change.type !== "added") return;
+      let response = change.doc.data();
+      if (response.to !== myId) return;
+      peerLookup[response.from].peer.signal(response.data);
+    })
+  })
+
+  // publish my existence to the world!
+  db.collection("peers").doc(myId).set({
+    peerId: myId,
+    handle: myHandle
+  }).then(() => {
+    db.collection("peers").doc(myId).delete();
+  });
 
 </script>
